@@ -2,6 +2,7 @@ import os
 import sys
 import csv
 from math import ceil
+from openpyxl import load_workbook
 
 number_of_weeks = 12
 csv_filename = "out_of_stock.csv"
@@ -19,6 +20,17 @@ lead_times = {
     'mircom': 4,
     'fci gamewell': 4
 }
+
+headers = [
+    'Item',
+    'SKU',
+    'Status',
+    'Weekly Sell AVG',
+    'Inventory Needed',
+    'Total Inventory',
+    'Quaitity On Hand',
+    'Quaitity On Purchase Order',
+]
 
 def get_lead_time(title):
     lead_time = 4
@@ -44,6 +56,7 @@ def get_data():
     data = {}
 
     br = get_filename_with_extension('csv')
+    qb = get_filename_with_extension('xlsx')
     al = get_filename_with_extension('txt')
 
     if not br or not al:
@@ -57,10 +70,30 @@ def get_data():
 
             needed_inventory = ceil(weekly_sell_avg * get_lead_time(row['Title']))
             data[row['SKU']] = {
-                'tittle': row['Title'],
-                'weekly_sell_avg': weekly_sell_avg if weekly_sell_avg > 0 else 0,
-                'needed_quantity': needed_inventory,
+                'Item': row['Title'],
+                'SKU': row['SKU'],
+                'Status': '',
+                'Weekly Sell AVG': weekly_sell_avg if weekly_sell_avg > 0 else 0,
+                'Inventory Needed': needed_inventory,
+                'Total Inventory': 0,
+                'Quaitity On Hand': 0,
+                'Quaitity On Purchase Order': 0,
             }
+
+    wb = load_workbook(filename=qb)
+
+    ws = wb['Sheet1']
+
+    for row in ws.rows:
+        sku = row[2].value
+        qoh = row[4].value
+        qopo = row[5].value
+        if sku and qoh is not None and qopo is not None:
+            item = data.get(sku)
+            if item:
+                item['Total Inventory'] = qoh + qopo
+                item['Quaitity On Hand'] = qoh
+                item['Quaitity On Purchase Order'] = qopo
 
     with open(al) as csvfile:
         spamreader = csv.DictReader(csvfile, delimiter='\t')
@@ -69,15 +102,14 @@ def get_data():
             sku = [value for key, value in row.items() if 'seller-sku' in key][0]
             item = data.get(sku)
             if item:
-                item['quantity'] = int(row['quantity'])
-                item['status'] = row['status']
+                #item['quantity'] = int(row['quantity'])
+                item['Status'] = row['status']
 
     with open(csv_filename, 'w') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=['tittle', 'weekly_sell_avg', 'status', 'quantity', 'needed_quantity'])
+        writer = csv.DictWriter(csvfile, fieldnames=headers)
         writer.writeheader()
         for sku, item in data.items():
-            print(item)
-            if item['needed_quantity'] >= item['quantity']:
+            if item['Inventory Needed'] >= item['Total Inventory']:
                 writer.writerow(item)
 
     return data
